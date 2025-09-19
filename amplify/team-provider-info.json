@@ -17,6 +17,9 @@
       },
       "storage": {
         "s3recaistorage": {}
+      },
+      "api": {
+        "therecai": {}
       }
     }
   }
