@@ -1,0 +1,81 @@
+# Example fixed schema for Amplify Transformer v2
+
+type Candidate @model @auth(rules: [{ allow: public, operations: [read] }]) {
+  id: ID!
+  name: String!
+  email: String!
+  phone: String
+  workExperiences: [WorkExperience] @hasMany(indexName: "byCandidate", fields: ["id"])
+  educations: [Education] @hasMany(indexName: "byCandidate", fields: ["id"])
+  certifications: [Certification] @hasMany(indexName: "byCandidate", fields: ["id"])
+  applications: [Application] @hasMany(indexName: "byCandidate", fields: ["id"])
+}
+
+type WorkExperience @model @auth(rules: [{ allow: public, operations: [read] }]) {
+  id: ID!
+  candidate_id: ID! @index(name: "byCandidate")
+  company: String
+  role: String
+  startDate: AWSDate
+  endDate: AWSDate
+}
+
+type Education @model @auth(rules: [{ allow: public, operations: [read] }]) {
+  id: ID!
+  candidate_id: ID! @index(name: "byCandidate")
+  school: String
+  degree: String
+  startDate: AWSDate
+  endDate: AWSDate
+}
+
+type Certification @model @auth(rules: [{ allow: public, operations: [read] }]) {
+  id: ID!
+  candidate_id: ID! @index(name: "byCandidate")
+  title: String
+  issuedBy: String
+  issueDate: AWSDate
+}
+
+type Job @model @auth(rules: [{ allow: public, operations: [read] }]) {
+  id: ID!
+  title: String!
+  description: String
+  applications: [Application] @hasMany(indexName: "byJob", fields: ["id"])
+}
+
+type Application @model @auth(rules: [{ allow: public, operations: [read] }]) {
+  id: ID!
+  candidate_id: ID! @index(name: "byCandidate")
+  job_id: ID! @index(name: "byJob")
+  status: String
+  feedbacks: [Feedback] @hasMany(indexName: "byApplication", fields: ["id"])
+}
+
+type Feedback @model @auth(rules: [{ allow: public, operations: [read] }]) {
+  id: ID!
+  application_id: ID! @index(name: "byApplication", sortKeyFields: ["createdAt"])
+  comment: String
+  createdAt: AWSDateTime!
+}
+
+type Organization @model @auth(rules: [{ allow: public, operations: [read] }]) {
+  id: ID!
+  name: String!
+  financialDetails: [FinancialDetails] @hasMany(indexName: "byOrganization", fields: ["id"])
+  profiles: [Profile] @hasMany(indexName: "byOrganization", fields: ["id"])
+}
+
+type FinancialDetails @model @auth(rules: [{ allow: public, operations: [read] }]) {
+  id: ID!
+  organization_id: ID! @index(name: "byOrganization")
+  revenue: Float
+  employees: Int
+}
+
+type Profile @model @auth(rules: [{ allow: public, operations: [read] }]) {
+  id: ID!
+  organization_id: ID! @index(name: "byOrganization")
+  role: String
+  userName: String
+}
