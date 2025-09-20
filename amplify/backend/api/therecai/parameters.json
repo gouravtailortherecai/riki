@@ -1,5 +1,6 @@
 {
   "AppSyncApiName": "therecai",
   "DynamoDBBillingMode": "PAY_PER_REQUEST",
-  "DynamoDBEnableServerSideEncryption": false
+  "DynamoDBEnableServerSideEncryption": false,
+  "AuthModeLastUpdated": "2025-09-20T08:44:06.366Z"
 }

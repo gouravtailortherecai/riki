@@ -6,12 +6,178 @@
 
 /* eslint-disable */
 import * as React from "react";
-import { Button, Flex, Grid, TextField } from "@aws-amplify/ui-react";
+import {
+  Badge,
+  Button,
+  Divider,
+  Flex,
+  Grid,
+  Icon,
+  ScrollView,
+  Text,
+  TextField,
+  useTheme,
+} from "@aws-amplify/ui-react";
 import { fetchByPath, getOverrideProps, validateField } from "./utils";
 import { generateClient } from "aws-amplify/api";
 import { getJob } from "../src/graphql/queries";
 import { updateJob } from "../src/graphql/mutations";
 const client = generateClient();
+function ArrayField({
+  items = [],
+  onChange,
+  label,
+  inputFieldRef,
+  children,
+  hasError,
+  setFieldValue,
+  currentFieldValue,
+  defaultFieldValue,
+  lengthLimit,
+  getBadgeText,
+  runValidationTasks,
+  errorMessage,
+}) {
+  const labelElement = <Text>{label}</Text>;
+  const {
+    tokens: {
+      components: {
+        fieldmessages: { error: errorStyles },
+      },
+    },
+  } = useTheme();
+  const [selectedBadgeIndex, setSelectedBadgeIndex] = React.useState();
+  const [isEditing, setIsEditing] = React.useState();
+  React.useEffect(() => {
+    if (isEditing) {
+      inputFieldRef?.current?.focus();
+    }
+  }, [isEditing]);
+  const removeItem = async (removeIndex) => {
+    const newItems = items.filter((value, index) => index !== removeIndex);
+    await onChange(newItems);
+    setSelectedBadgeIndex(undefined);
+  };
+  const addItem = async () => {
+    const { hasError } = runValidationTasks();
+    if (
+      currentFieldValue !== undefined &&
+      currentFieldValue !== null &&
+      currentFieldValue !== "" &&
+      !hasError
+    ) {
+      const newItems = [...items];
+      if (selectedBadgeIndex !== undefined) {
+        newItems[selectedBadgeIndex] = currentFieldValue;
+        setSelectedBadgeIndex(undefined);
+      } else {
+        newItems.push(currentFieldValue);
+      }
+      await onChange(newItems);
+      setIsEditing(false);
+    }
+  };
+  const arraySection = (
+    <React.Fragment>
+      {!!items?.length && (
+        <ScrollView height="inherit" width="inherit" maxHeight={"7rem"}>
+          {items.map((value, index) => {
+            return (
+              <Badge
+                key={index}
+                style={{
+                  cursor: "pointer",
+                  alignItems: "center",
+                  marginRight: 3,
+                  marginTop: 3,
+                  backgroundColor:
+                    index === selectedBadgeIndex ? "#B8CEF9" : "",
+                }}
+                onClick={() => {
+                  setSelectedBadgeIndex(index);
+                  setFieldValue(items[index]);
+                  setIsEditing(true);
+                }}
+              >
+                {getBadgeText ? getBadgeText(value) : value.toString()}
+                <Icon
+                  style={{
+                    cursor: "pointer",
+                    paddingLeft: 3,
+                    width: 20,
+                    height: 20,
+                  }}
+                  viewBox={{ width: 20, height: 20 }}
+                  paths={[
+                    {
+                      d: "M10 10l5.09-5.09L10 10l5.09 5.09L10 10zm0 0L4.91 4.91 10 10l-5.09 5.09L10 10z",
+                      stroke: "black",
+                    },
+                  ]}
+                  ariaLabel="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    removeItem(index);
+                  }}
+                />
+              </Badge>
+            );
+          })}
+        </ScrollView>
+      )}
+      <Divider orientation="horizontal" marginTop={5} />
+    </React.Fragment>
+  );
+  if (lengthLimit !== undefined && items.length >= lengthLimit && !isEditing) {
+    return (
+      <React.Fragment>
+        {labelElement}
+        {arraySection}
+      </React.Fragment>
+    );
+  }
+  return (
+    <React.Fragment>
+      {labelElement}
+      {isEditing && children}
+      {!isEditing ? (
+        <>
+          <Button
+            onClick={() => {
+              setIsEditing(true);
+            }}
+          >
+            Add item
+          </Button>
+          {errorMessage && hasError && (
+            <Text color={errorStyles.color} fontSize={errorStyles.fontSize}>
+              {errorMessage}
+            </Text>
+          )}
+        </>
+      ) : (
+        <Flex justifyContent="flex-end">
+          {(currentFieldValue || isEditing) && (
+            <Button
+              children="Cancel"
+              type="button"
+              size="small"
+              onClick={() => {
+                setFieldValue(defaultFieldValue);
+                setIsEditing(false);
+                setSelectedBadgeIndex(undefined);
+              }}
+            ></Button>
+          )}
+          <Button size="small" variation="link" onClick={addItem}>
+            {selectedBadgeIndex !== undefined ? "Save" : "Add"}
+          </Button>
+        </Flex>
+      )}
+      {arraySection}
+    </React.Fragment>
+  );
+}
 export default function JobUpdateForm(props) {
   const {
     id: idProp,
@@ -27,11 +193,17 @@ export default function JobUpdateForm(props) {
   const initialValues = {
     title: "",
     description: "",
+    ctc: [],
+    experience: [],
+    jd: "",
   };
   const [title, setTitle] = React.useState(initialValues.title);
   const [description, setDescription] = React.useState(
     initialValues.description
   );
+  const [ctc, setCtc] = React.useState(initialValues.ctc);
+  const [experience, setExperience] = React.useState(initialValues.experience);
+  const [jd, setJd] = React.useState(initialValues.jd);
   const [errors, setErrors] = React.useState({});
   const resetStateValues = () => {
     const cleanValues = jobRecord
@@ -39,6 +211,11 @@ export default function JobUpdateForm(props) {
       : initialValues;
     setTitle(cleanValues.title);
     setDescription(cleanValues.description);
+    setCtc(cleanValues.ctc ?? []);
+    setCurrentCtcValue("");
+    setExperience(cleanValues.experience ?? []);
+    setCurrentExperienceValue("");
+    setJd(cleanValues.jd);
     setErrors({});
   };
   const [jobRecord, setJobRecord] = React.useState(jobModelProp);
@@ -57,9 +234,17 @@ export default function JobUpdateForm(props) {
     queryData();
   }, [idProp, jobModelProp]);
   React.useEffect(resetStateValues, [jobRecord]);
+  const [currentCtcValue, setCurrentCtcValue] = React.useState("");
+  const ctcRef = React.createRef();
+  const [currentExperienceValue, setCurrentExperienceValue] =
+    React.useState("");
+  const experienceRef = React.createRef();
   const validations = {
     title: [{ type: "Required" }],
     description: [],
+    ctc: [],
+    experience: [],
+    jd: [{ type: "URL" }],
   };
   const runValidationTasks = async (
     fieldName,
@@ -89,6 +274,9 @@ export default function JobUpdateForm(props) {
         let modelFields = {
           title,
           description: description ?? null,
+          ctc: ctc ?? null,
+          experience: experience ?? null,
+          jd: jd ?? null,
         };
         const validationResponses = await Promise.all(
           Object.keys(validations).reduce((promises, fieldName) => {
@@ -151,6 +339,9 @@ export default function JobUpdateForm(props) {
             const modelFields = {
               title: value,
               description,
+              ctc,
+              experience,
+              jd,
             };
             const result = onChange(modelFields);
             value = result?.title ?? value;
@@ -176,6 +367,9 @@ export default function JobUpdateForm(props) {
             const modelFields = {
               title,
               description: value,
+              ctc,
+              experience,
+              jd,
             };
             const result = onChange(modelFields);
             value = result?.description ?? value;
@@ -189,6 +383,142 @@ export default function JobUpdateForm(props) {
         errorMessage={errors.description?.errorMessage}
         hasError={errors.description?.hasError}
         {...getOverrideProps(overrides, "description")}
+      ></TextField>
+      <ArrayField
+        onChange={async (items) => {
+          let values = items;
+          if (onChange) {
+            const modelFields = {
+              title,
+              description,
+              ctc: values,
+              experience,
+              jd,
+            };
+            const result = onChange(modelFields);
+            values = result?.ctc ?? values;
+          }
+          setCtc(values);
+          setCurrentCtcValue("");
+        }}
+        currentFieldValue={currentCtcValue}
+        label={"Ctc"}
+        items={ctc}
+        hasError={errors?.ctc?.hasError}
+        runValidationTasks={async () =>
+          await runValidationTasks("ctc", currentCtcValue)
+        }
+        errorMessage={errors?.ctc?.errorMessage}
+        setFieldValue={setCurrentCtcValue}
+        inputFieldRef={ctcRef}
+        defaultFieldValue={""}
+      >
+        <TextField
+          label="Ctc"
+          isRequired={false}
+          isReadOnly={false}
+          type="number"
+          step="any"
+          value={currentCtcValue}
+          onChange={(e) => {
+            let value = isNaN(parseFloat(e.target.value))
+              ? e.target.value
+              : parseFloat(e.target.value);
+            if (errors.ctc?.hasError) {
+              runValidationTasks("ctc", value);
+            }
+            setCurrentCtcValue(value);
+          }}
+          onBlur={() => runValidationTasks("ctc", currentCtcValue)}
+          errorMessage={errors.ctc?.errorMessage}
+          hasError={errors.ctc?.hasError}
+          ref={ctcRef}
+          labelHidden={true}
+          {...getOverrideProps(overrides, "ctc")}
+        ></TextField>
+      </ArrayField>
+      <ArrayField
+        onChange={async (items) => {
+          let values = items;
+          if (onChange) {
+            const modelFields = {
+              title,
+              description,
+              ctc,
+              experience: values,
+              jd,
+            };
+            const result = onChange(modelFields);
+            values = result?.experience ?? values;
+          }
+          setExperience(values);
+          setCurrentExperienceValue("");
+        }}
+        currentFieldValue={currentExperienceValue}
+        label={"Experience"}
+        items={experience}
+        hasError={errors?.experience?.hasError}
+        runValidationTasks={async () =>
+          await runValidationTasks("experience", currentExperienceValue)
+        }
+        errorMessage={errors?.experience?.errorMessage}
+        setFieldValue={setCurrentExperienceValue}
+        inputFieldRef={experienceRef}
+        defaultFieldValue={""}
+      >
+        <TextField
+          label="Experience"
+          isRequired={false}
+          isReadOnly={false}
+          type="number"
+          step="any"
+          value={currentExperienceValue}
+          onChange={(e) => {
+            let value = isNaN(parseFloat(e.target.value))
+              ? e.target.value
+              : parseFloat(e.target.value);
+            if (errors.experience?.hasError) {
+              runValidationTasks("experience", value);
+            }
+            setCurrentExperienceValue(value);
+          }}
+          onBlur={() =>
+            runValidationTasks("experience", currentExperienceValue)
+          }
+          errorMessage={errors.experience?.errorMessage}
+          hasError={errors.experience?.hasError}
+          ref={experienceRef}
+          labelHidden={true}
+          {...getOverrideProps(overrides, "experience")}
+        ></TextField>
+      </ArrayField>
+      <TextField
+        label="Jd"
+        isRequired={false}
+        isReadOnly={false}
+        value={jd}
+        onChange={(e) => {
+          let { value } = e.target;
+          if (onChange) {
+            const modelFields = {
+              title,
+              description,
+              ctc,
+              experience,
+              jd: value,
+            };
+            const result = onChange(modelFields);
+            value = result?.jd ?? value;
+          }
+          if (errors.jd?.hasError) {
+            runValidationTasks("jd", value);
+          }
+          setJd(value);
+        }}
+        onBlur={() => runValidationTasks("jd", jd)}
+        errorMessage={errors.jd?.errorMessage}
+        hasError={errors.jd?.hasError}
+        {...getOverrideProps(overrides, "jd")}
       ></TextField>
       <Flex
         justifyContent="space-between"

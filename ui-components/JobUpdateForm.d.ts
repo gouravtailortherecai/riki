@@ -25,16 +25,25 @@ export declare type ValidationFunction<T> = (value: T, validationResponse: Valid
 export declare type JobUpdateFormInputValues = {
     title?: string;
     description?: string;
+    ctc?: number[];
+    experience?: number[];
+    jd?: string;
 };
 export declare type JobUpdateFormValidationValues = {
     title?: ValidationFunction<string>;
     description?: ValidationFunction<string>;
+    ctc?: ValidationFunction<number>;
+    experience?: ValidationFunction<number>;
+    jd?: ValidationFunction<string>;
 };
 export declare type PrimitiveOverrideProps<T> = Partial<T> & React.DOMAttributes<HTMLDivElement>;
 export declare type JobUpdateFormOverridesProps = {
     JobUpdateFormGrid?: PrimitiveOverrideProps<GridProps>;
     title?: PrimitiveOverrideProps<TextFieldProps>;
     description?: PrimitiveOverrideProps<TextFieldProps>;
+    ctc?: PrimitiveOverrideProps<TextFieldProps>;
+    experience?: PrimitiveOverrideProps<TextFieldProps>;
+    jd?: PrimitiveOverrideProps<TextFieldProps>;
 } & EscapeHatchProps;
 export declare type JobUpdateFormProps = React.PropsWithChildren<{
     overrides?: JobUpdateFormOverridesProps | undefined | null;
