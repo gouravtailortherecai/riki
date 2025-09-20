@@ -2,9 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import "@aws-amplify/ui-react/styles.css";
-
-import { Amplify } from "aws-amplify";
-import awsExports from "@/aws-exports";
+import { AmplifyProvider } from "./AmplifyProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,8 +19,6 @@ export const metadata: Metadata = {
   description: "an riki for recruitement ai",
 };
 
-Amplify.configure(awsExports);
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -33,7 +29,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <AmplifyProvider>{children}</AmplifyProvider>
       </body>
     </html>
   );
