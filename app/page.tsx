@@ -3,6 +3,8 @@
 import { useMemo, useRef, useState } from "react";
 import { withAuthenticator, WithAuthenticatorProps } from "@aws-amplify/ui-react";
 import { ThemeProvider, Theme } from "@aws-amplify/ui-react";
+import awsExports from "../aws-exports";
+import { uploadData } from "aws-amplify/storage";
 import {
   Plus,
   MessageSquare,
@@ -53,25 +55,25 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
   const contacts: ChatContact[] = useMemo(
     () => [
       {
-        id: "1",
-        name: "Alice Johnson",
+        id: "askcv",
+        name: "AskCV",
         avatarUrl: undefined,
-        lastMessage: "Can you share your latest CV?",
-        time: "10:12",
+        lastMessage: "Upload resumes to analyze candidates.",
+        time: "",
       },
       {
-        id: "2",
-        name: "Bob Recruiter",
+        id: "askjd",
+        name: "AskJD",
         avatarUrl: undefined,
-        lastMessage: "Let's schedule an interview.",
-        time: "09:40",
+        lastMessage: "Upload jobs to extract requirements.",
+        time: "",
       },
       {
-        id: "3",
-        name: "Tech HR",
+        id: "askit",
+        name: "AskIT",
         avatarUrl: undefined,
-        lastMessage: "We received your application.",
-        time: "Yesterday",
+        lastMessage: "Upload chat issue docs for troubleshooting.",
+        time: "",
       },
     ],
     []
@@ -79,15 +81,14 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
 
   const [activeId, setActiveId] = useState<string>(contacts[0]?.id ?? "");
   const [messagesByContact, setMessagesByContact] = useState<Record<string, ChatMessage[]>>({
-    "1": [
-      { id: "m1", author: "them", text: "Hi!", time: "10:10" },
-      { id: "m2", author: "me", text: "Hello Alice", time: "10:11" },
+    askcv: [
+      { id: "m1", author: "them", text: "Hi, upload resumes to begin.", time: "" },
     ],
-    "2": [
-      { id: "m1", author: "them", text: "When are you free?", time: "09:38" },
+    askjd: [
+      { id: "m1", author: "them", text: "Hi, upload job descriptions.", time: "" },
     ],
-    "3": [
-      { id: "m1", author: "them", text: "We will get back to you soon.", time: "Yesterday" },
+    askit: [
+      { id: "m1", author: "them", text: "Hi, upload error issue files.", time: "" },
     ],
   });
 
@@ -97,11 +98,14 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
 
   const activeContact = contacts.find((c) => c.id === activeId);
   const messages = messagesByContact[activeId] ?? [];
+  const userId: string = (user as any)?.attributes?.sub || (user as any)?.username || "anonymous";
+  const bucketName: string = (awsExports as any)?.aws_user_files_s3_bucket || "";
+  const publicPrefix = "public/";
 
-  function handleSend() {
+  async function handleSend() {
     const trimmed = draft.trim();
     if (!trimmed) return;
-    const newMsg: ChatMessage = {
+    const outMsg: ChatMessage = {
       id: `${Date.now()}`,
       author: "me",
       text: trimmed,
@@ -109,23 +113,159 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
     };
     setMessagesByContact((prev) => ({
       ...prev,
-      [activeId]: [...(prev[activeId] ?? []), newMsg],
+      [activeId]: [...(prev[activeId] ?? []), outMsg],
     }));
     setDraft("");
     inputRef.current?.focus();
-  }
 
-  function handleUpload(file: File) {
-    const newMsg: ChatMessage = {
-      id: `${Date.now()}-file`,
-      author: "me",
-      fileName: file.name,
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
+    // Typing indicator
+    const typingId = `typing-${Date.now()}`;
     setMessagesByContact((prev) => ({
       ...prev,
-      [activeId]: [...(prev[activeId] ?? []), newMsg],
+      [activeId]: [
+        ...(prev[activeId] ?? []),
+        { id: typingId, author: "them", text: "…", time: "" },
+      ],
     }));
+
+    try {
+      // Only AskCV triggers resume Q&A query
+      if (activeId === "askcv") {
+        const resp = await fetch("https://resume-query-api.onrender.com/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, question: trimmed }),
+        });
+        const data = await resp.json();
+        const answer = data?.answer ?? JSON.stringify(data);
+        setMessagesByContact((prev) => ({
+          ...prev,
+          [activeId]: [
+            ...(prev[activeId] ?? []).filter((m) => m.id !== typingId),
+            { id: `${Date.now()}-ans`, author: "them", text: String(answer), time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
+          ],
+        }));
+      } else {
+        // For other bots, just remove typing after delay
+        await new Promise((r) => setTimeout(r, 600));
+        setMessagesByContact((prev) => ({
+          ...prev,
+          [activeId]: (prev[activeId] ?? []).filter((m) => m.id !== typingId),
+        }));
+      }
+    } catch (e) {
+      setMessagesByContact((prev) => ({
+        ...prev,
+        [activeId]: [
+          ...(prev[activeId] ?? []).filter((m) => m.id !== typingId),
+          { id: `${Date.now()}-err`, author: "them", text: `Error: ${String(e)}`, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
+        ],
+      }));
+    }
+  }
+
+  type UploadStatus = { id: string; name: string; progress: number; status: "pending" | "uploading" | "success" | "error"; error?: string };
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploads, setUploads] = useState<UploadStatus[]>([]);
+
+  function getPrefixForActive(): string {
+    if (activeId === "askcv") return "cv/";
+    if (activeId === "askjd") return "jd/";
+    return "it/";
+  }
+
+  function getAcceptForActive(): string {
+    if (activeId === "askcv") return ".pdf,.doc,.docx,.txt,.rtf";
+    if (activeId === "askjd") return ".pdf,.doc,.docx,.txt,.rtf";
+    return ".pdf,.txt,.md,.log,.doc,.docx";
+  }
+
+  async function handleUploadFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    const base = files.map((f) => ({ id: `${Date.now()}-${f.name}`, name: f.name, progress: 0, status: "pending" as const }));
+    setUploads(base);
+    setShowUploadModal(true);
+    const prefix = getPrefixForActive();
+
+    for (const file of files) {
+      const timestamp = Date.now();
+      const uniqueName = `${timestamp}-${file.name}`;
+      const id = `${timestamp}-${file.name}`;
+      setUploads((prev) => prev.map((u) => (u.name === file.name ? { ...u, status: "uploading" } : u)));
+      try {
+        const key = `${prefix}${uniqueName}`; // logical key without 'public/'
+        await uploadData({
+          key,
+          data: file,
+          options: {
+            accessLevel: "guest",
+            contentType: file.type || "application/octet-stream",
+            onProgress: ({ transferredBytes, totalBytes }) => {
+              if (!totalBytes) return;
+              const pct = Math.round((transferredBytes / totalBytes) * 100);
+              setUploads((prev) => prev.map((u) => (u.name === file.name ? { ...u, progress: pct } : u)));
+            },
+          },
+        }).result;
+
+        setUploads((prev) => prev.map((u) => (u.name === file.name ? { ...u, status: "success", progress: 100 } : u)));
+        const newMsg: ChatMessage = {
+          id,
+          author: "me",
+          fileName: uniqueName,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        setMessagesByContact((prev) => ({
+          ...prev,
+          [activeId]: [...(prev[activeId] ?? []), newMsg],
+        }));
+
+        // Post-upload processing for AskCV: parse then ingest
+        if (activeId === "askcv") {
+          try {
+            const fileKeyForApi = `${publicPrefix}${key}`;
+            // simple retry for S3 eventual consistency
+            let parseJson: any = null;
+            let lastErr: any = null;
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try {
+                const parseRes = await fetch("https://resume-parser-amplify.onrender.com/parse", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    userId: userId,
+                    bucketName: bucketName,
+                    fileKey: fileKeyForApi,
+                    mimeType: file.type || "application/octet-stream",
+                  }),
+                });
+                if (!parseRes.ok) throw new Error(`Parse API ${parseRes.status}`);
+                parseJson = await parseRes.json();
+                lastErr = null;
+                break;
+              } catch (e) {
+                lastErr = e;
+                await new Promise((r) => setTimeout(r, 800));
+              }
+            }
+            if (lastErr) throw lastErr;
+            const parsedData = parseJson?.parsedData ?? {};
+            const resumeText = typeof parsedData === "string" ? parsedData : JSON.stringify(parsedData);
+            await fetch("https://resume-query-api.onrender.com/ingest", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_id: userId, resume_text: resumeText }),
+            });
+          } catch (apiErr) {
+            // reflect error status in modal list
+            setUploads((prev) => prev.map((u) => (u.name === file.name ? { ...u, status: "error", error: String(apiErr) } : u)));
+          }
+        }
+      } catch (err: any) {
+        setUploads((prev) => prev.map((u) => (u.name === file.name ? { ...u, status: "error", error: String(err) } : u)));
+      }
+    }
   }
 
   return (
@@ -149,10 +289,10 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
               </button>
             </div>
             <div className="mt-auto flex flex-col items-center gap-3">
-              <button
+          <button
                 className="size-11 rounded-full bg-red-600/90 hover:bg-red-600 grid place-items-center"
                 title="Logout"
-                onClick={signOut}
+            onClick={signOut}
               >
                 <LogOut className="size-5" />
               </button>
@@ -195,17 +335,12 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
                     )}
                   >
                     <div className="size-11 rounded-full overflow-hidden bg-zinc-600 grid place-items-center text-sm font-semibold">
-                      {c.avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.avatarUrl} alt={c.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span>{c.name.split(" ").map((p) => p[0]).join("")}</span>
-                      )}
+                      <span>{c.name.substring(0, 2)}</span>
                     </div>
                     <div className="flex-1 text-left">
                       <div className="flex items-center justify-between">
                         <p className="font-semibold truncate">{c.name}</p>
-                        <span className="text-xs text-zinc-400 ml-2">{c.time}</span>
+                        {c.time && <span className="text-xs text-zinc-400 ml-2">{c.time}</span>}
                       </div>
                       <p className="text-sm text-zinc-300 truncate">{c.lastMessage}</p>
                     </div>
@@ -240,7 +375,7 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto bg-[url('/window.svg')] bg-cover/30 bg-center p-4">
+            <div className="flex-1 overflow-y-auto bg-zinc-800 bg-cover/30 bg-center p-4">
               <div className="max-w-3xl mx-auto flex flex-col gap-2">
                 {messages.map((m) => (
                   <div
@@ -252,7 +387,15 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
                         : "self-start bg-zinc-700 text-zinc-100"
                     )}
                   >
-                    {m.text && <p className="whitespace-pre-wrap">{m.text}</p>}
+                    {m.text === "…" ? (
+                      <div className="flex items-center gap-1 py-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-300 animate-pulse" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-300 animate-pulse [animation-delay:150ms]" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-300 animate-pulse [animation-delay:300ms]" />
+                      </div>
+                    ) : (
+                      m.text && <p className="whitespace-pre-wrap">{m.text}</p>
+                    )}
                     {m.fileName && (
                       <div className="flex items-center gap-2">
                         <Paperclip className="size-4" />
@@ -272,10 +415,10 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
                   type="file"
                   ref={fileRef}
                   className="hidden"
-                  accept=".pdf,.doc,.docx,.txt,.rtf"
+                  accept={getAcceptForActive()}
+                  multiple
                   onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleUpload(file);
+                    handleUploadFiles(e.target.files);
                     if (fileRef.current) fileRef.current.value = "";
                   }}
                 />
@@ -307,13 +450,47 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
                     title="Send"
                   >
                     <Send className="size-4" />
-                  </button>
+          </button>
                 </div>
               </div>
             </div>
           </section>
         </div>
       </main>
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black/60 grid place-items-center p-4 z-50">
+          <div className="w-full max-w-xl bg-zinc-800 border border-zinc-700 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 h-12 border-b border-zinc-700">
+              <p className="font-semibold">Uploading files</p>
+              <button className="text-zinc-300 hover:text-white text-sm" onClick={() => setShowUploadModal(false)}>Close</button>
+            </div>
+            <div className="p-4 max-h-[60vh] overflow-y-auto space-y-3">
+              {uploads.length === 0 && <p className="text-sm text-zinc-400">No files queued.</p>}
+              {uploads.map((u) => (
+                <div key={u.id} className="bg-zinc-700/60 rounded-md p-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{u.name}</span>
+                    <span className="text-zinc-300">
+                      {u.status === "uploading" && `${u.progress}%`}
+                      {u.status === "success" && "Done"}
+                      {u.status === "error" && "Failed"}
+                    </span>
+                  </div>
+                  <div className="h-2 bg-zinc-600 rounded mt-2 overflow-hidden">
+                    <div
+                      className={`h-full ${u.status === "error" ? "bg-red-500" : "bg-emerald-500"}`}
+                      style={{ width: `${u.progress}%` }}
+                    />
+                  </div>
+                  {u.status === "error" && (
+                    <p className="text-xs text-red-400 mt-1">{u.error}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </ThemeProvider>
   );
 }
