@@ -231,8 +231,8 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
           try {
             const fileKeyForApi = `${publicPrefix}${key}`;
             // simple retry for S3 eventual consistency
-            let parseJson: any = null;
-            let lastErr: any = null;
+            let parseJson: unknown = null;
+            let lastErr: unknown = null;
             for (let attempt = 0; attempt < 3; attempt++) {
               try {
                 const parseRes = await fetch("https://resume-parser-amplify.onrender.com/parse", {
