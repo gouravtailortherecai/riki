@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { withAuthenticator, WithAuthenticatorProps } from "@aws-amplify/ui-react";
-import { ThemeProvider, Theme } from "@aws-amplify/ui-react";
+import { ThemeProvider } from "@aws-amplify/ui-react";
 import awsExports from "../aws-exports";
 import { uploadData } from "aws-amplify/storage";
 import {
@@ -17,6 +17,9 @@ import {
   Smile,
   Send,
   LogOut,
+  FileText,
+  Briefcase,
+  Bug,
 } from "lucide-react";
 
 type ChatContact = {
@@ -33,18 +36,6 @@ type ChatMessage = {
   text?: string;
   fileName?: string;
   time: string;
-};
-
-const myTheme: Theme = {
-  name: "my-theme",
-  tokens: {
-    colors: {
-      brand: {
-        primary: { value: "#22c55e" },
-        secondary: { value: "#111827" },
-      },
-    },
-  },
 };
 
 function classNames(...list: (string | false | undefined)[]) {
@@ -269,9 +260,9 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
   }
 
   return (
-    <ThemeProvider theme={myTheme}>
+    <ThemeProvider>
       <main className="min-h-screen bg-zinc-900 text-zinc-100">
-        <div className="h-[100vh] mx-auto max-w-[1400px] grid grid-cols-[72px_360px_1fr] bg-zinc-800">
+        <div className="h-[100vh] w-full grid grid-cols-[72px_360px_1fr] bg-zinc-800">
           {/* Column 1: Narrow sidebar */}
           <aside className="flex flex-col items-center justify-between border-r border-zinc-700 py-4">
             <div className="flex flex-col gap-4">
@@ -301,7 +292,7 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   alt="You"
-                  src={(user as any)?.attributes?.picture || "/vercel.svg"}
+                  src={(user as any)?.attributes?.picture || "/user.png"}
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -334,8 +325,15 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
                       isActive && "bg-zinc-700/60"
                     )}
                   >
-                    <div className="size-11 rounded-full overflow-hidden bg-zinc-600 grid place-items-center text-sm font-semibold">
-                      <span>{c.name.substring(0, 2)}</span>
+                    <div className="size-11 rounded-full grid place-items-center text-sm font-semibold"
+                         style={{
+                           backgroundColor:
+                             c.id === "askcv" ? "#065f46" : c.id === "askjd" ? "#1e40af" : "#7c2d12",
+                           color: "white",
+                         }}>
+                      {c.id === "askcv" && <FileText className="size-5" />}
+                      {c.id === "askjd" && <Briefcase className="size-5" />}
+                      {c.id === "askit" && <Bug className="size-5" />}
                     </div>
                     <div className="flex-1 text-left">
                       <div className="flex items-center justify-between">
