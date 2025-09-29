@@ -18,11 +18,9 @@ import {
   TextField,
   useTheme,
 } from "@aws-amplify/ui-react";
+import { Candidate } from "../models";
 import { fetchByPath, getOverrideProps, validateField } from "./utils";
-import { generateClient } from "aws-amplify/api";
-import { getCandidate } from "../src/graphql/queries";
-import { updateCandidate } from "../src/graphql/mutations";
-const client = generateClient();
+import { DataStore } from "aws-amplify/datastore";
 function ArrayField({
   items = [],
   onChange,
@@ -232,12 +230,7 @@ export default function CandidateUpdateForm(props) {
   React.useEffect(() => {
     const queryData = async () => {
       const record = idProp
-        ? (
-            await client.graphql({
-              query: getCandidate.replaceAll("__typename", ""),
-              variables: { id: idProp },
-            })
-          )?.data?.getCandidate
+        ? await DataStore.query(Candidate, idProp)
         : candidateModelProp;
       setCandidateRecord(record);
     };
@@ -285,13 +278,13 @@ export default function CandidateUpdateForm(props) {
         let modelFields = {
           name,
           email,
-          phone: phone ?? null,
-          resume: resume ?? null,
-          skills: skills ?? null,
-          education: education ?? null,
-          summary: summary ?? null,
-          experience: experience ?? null,
-          linkedin: linkedin ?? null,
+          phone,
+          resume,
+          skills,
+          education,
+          summary,
+          experience,
+          linkedin,
         };
         const validationResponses = await Promise.all(
           Object.keys(validations).reduce((promises, fieldName) => {
@@ -321,22 +314,17 @@ export default function CandidateUpdateForm(props) {
               modelFields[key] = null;
             }
           });
-          await client.graphql({
-            query: updateCandidate.replaceAll("__typename", ""),
-            variables: {
-              input: {
-                id: candidateRecord.id,
-                ...modelFields,
-              },
-            },
-          });
+          await DataStore.save(
+            Candidate.copyOf(candidateRecord, (updated) => {
+              Object.assign(updated, modelFields);
+            })
+          );
           if (onSuccess) {
             onSuccess(modelFields);
           }
         } catch (err) {
           if (onError) {
-            const messages = err.errors.map((e) => e.message).join("\n");
-            onError(modelFields, messages);
+            onError(modelFields, err.message);
           }
         }
       }}

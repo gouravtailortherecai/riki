@@ -3,13 +3,13 @@ type Candidate @model @auth(rules: [{allow: public, operations: [read]}]) {
   name: String!
   email: String!
   phone: String
-  Applications: [Application] @hasMany(indexName: "byCandidate", fields: ["id"])
   resume: AWSURL
   skills: [String]
   education: String
   summary: String
   experience: Float
   linkedin: AWSURL
+  Applications: [Application] @hasMany(indexName: "byCandidate", fields: ["id"])
 }
 
 type Job @model @auth(rules: [{allow: public, operations: [read]}]) {
@@ -48,5 +48,4 @@ type Profile @model @auth(rules: [{allow: public, operations: [read]}]) {
   organization_id: ID! @index(name: "byOrganization")
   role: String
   userName: String
-}
- 
+} 

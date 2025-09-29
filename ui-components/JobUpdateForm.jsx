@@ -18,11 +18,9 @@ import {
   TextField,
   useTheme,
 } from "@aws-amplify/ui-react";
+import { Job } from "../models";
 import { fetchByPath, getOverrideProps, validateField } from "./utils";
-import { generateClient } from "aws-amplify/api";
-import { getJob } from "../src/graphql/queries";
-import { updateJob } from "../src/graphql/mutations";
-const client = generateClient();
+import { DataStore } from "aws-amplify/datastore";
 function ArrayField({
   items = [],
   onChange,
@@ -221,14 +219,7 @@ export default function JobUpdateForm(props) {
   const [jobRecord, setJobRecord] = React.useState(jobModelProp);
   React.useEffect(() => {
     const queryData = async () => {
-      const record = idProp
-        ? (
-            await client.graphql({
-              query: getJob.replaceAll("__typename", ""),
-              variables: { id: idProp },
-            })
-          )?.data?.getJob
-        : jobModelProp;
+      const record = idProp ? await DataStore.query(Job, idProp) : jobModelProp;
       setJobRecord(record);
     };
     queryData();
@@ -273,10 +264,10 @@ export default function JobUpdateForm(props) {
         event.preventDefault();
         let modelFields = {
           title,
-          description: description ?? null,
-          ctc: ctc ?? null,
-          experience: experience ?? null,
-          jd: jd ?? null,
+          description,
+          ctc,
+          experience,
+          jd,
         };
         const validationResponses = await Promise.all(
           Object.keys(validations).reduce((promises, fieldName) => {
@@ -306,22 +297,17 @@ export default function JobUpdateForm(props) {
               modelFields[key] = null;
             }
           });
-          await client.graphql({
-            query: updateJob.replaceAll("__typename", ""),
-            variables: {
-              input: {
-                id: jobRecord.id,
-                ...modelFields,
-              },
-            },
-          });
+          await DataStore.save(
+            Job.copyOf(jobRecord, (updated) => {
+              Object.assign(updated, modelFields);
+            })
+          );
           if (onSuccess) {
             onSuccess(modelFields);
           }
         } catch (err) {
           if (onError) {
-            const messages = err.errors.map((e) => e.message).join("\n");
-            onError(modelFields, messages);
+            onError(modelFields, err.message);
           }
         }
       }}

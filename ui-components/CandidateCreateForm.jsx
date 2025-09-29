@@ -18,10 +18,9 @@ import {
   TextField,
   useTheme,
 } from "@aws-amplify/ui-react";
+import { Candidate } from "../models";
 import { fetchByPath, getOverrideProps, validateField } from "./utils";
-import { generateClient } from "aws-amplify/api";
-import { createCandidate } from "../src/graphql/mutations";
-const client = generateClient();
+import { DataStore } from "aws-amplify/datastore";
 function ArrayField({
   items = [],
   onChange,
@@ -299,14 +298,7 @@ export default function CandidateCreateForm(props) {
               modelFields[key] = null;
             }
           });
-          await client.graphql({
-            query: createCandidate.replaceAll("__typename", ""),
-            variables: {
-              input: {
-                ...modelFields,
-              },
-            },
-          });
+          await DataStore.save(new Candidate(modelFields));
           if (onSuccess) {
             onSuccess(modelFields);
           }
@@ -315,8 +307,7 @@ export default function CandidateCreateForm(props) {
           }
         } catch (err) {
           if (onError) {
-            const messages = err.errors.map((e) => e.message).join("\n");
-            onError(modelFields, messages);
+            onError(modelFields, err.message);
           }
         }
       }}

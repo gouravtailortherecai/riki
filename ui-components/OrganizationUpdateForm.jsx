@@ -7,11 +7,9 @@
 /* eslint-disable */
 import * as React from "react";
 import { Button, Flex, Grid, TextField } from "@aws-amplify/ui-react";
+import { Organization } from "../models";
 import { fetchByPath, getOverrideProps, validateField } from "./utils";
-import { generateClient } from "aws-amplify/api";
-import { getOrganization } from "../src/graphql/queries";
-import { updateOrganization } from "../src/graphql/mutations";
-const client = generateClient();
+import { DataStore } from "aws-amplify/datastore";
 export default function OrganizationUpdateForm(props) {
   const {
     id: idProp,
@@ -42,12 +40,7 @@ export default function OrganizationUpdateForm(props) {
   React.useEffect(() => {
     const queryData = async () => {
       const record = idProp
-        ? (
-            await client.graphql({
-              query: getOrganization.replaceAll("__typename", ""),
-              variables: { id: idProp },
-            })
-          )?.data?.getOrganization
+        ? await DataStore.query(Organization, idProp)
         : organizationModelProp;
       setOrganizationRecord(record);
     };
@@ -113,22 +106,17 @@ export default function OrganizationUpdateForm(props) {
               modelFields[key] = null;
             }
           });
-          await client.graphql({
-            query: updateOrganization.replaceAll("__typename", ""),
-            variables: {
-              input: {
-                id: organizationRecord.id,
-                ...modelFields,
-              },
-            },
-          });
+          await DataStore.save(
+            Organization.copyOf(organizationRecord, (updated) => {
+              Object.assign(updated, modelFields);
+            })
+          );
           if (onSuccess) {
             onSuccess(modelFields);
           }
         } catch (err) {
           if (onError) {
-            const messages = err.errors.map((e) => e.message).join("\n");
-            onError(modelFields, messages);
+            onError(modelFields, err.message);
           }
         }
       }}
