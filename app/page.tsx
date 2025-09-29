@@ -38,6 +38,18 @@ type ChatMessage = {
   time: string;
 };
 
+type AmplifyUserLike = {
+  attributes?: {
+    sub?: string;
+    picture?: string;
+  };
+  username?: string;
+} | null | undefined;
+
+type AwsExports = {
+  aws_user_files_s3_bucket?: string;
+};
+
 function classNames(...list: (string | false | undefined)[]) {
   return list.filter(Boolean).join(" ");
 }
@@ -89,8 +101,10 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
 
   const activeContact = contacts.find((c) => c.id === activeId);
   const messages = messagesByContact[activeId] ?? [];
-  const userId: string = (user as any)?.attributes?.sub || (user as any)?.username || "anonymous";
-  const bucketName: string = (awsExports as any)?.aws_user_files_s3_bucket || "";
+  const amplifyUser = user as AmplifyUserLike;
+  const userId: string = amplifyUser?.attributes?.sub || amplifyUser?.username || "anonymous";
+  const cfg = awsExports as unknown as AwsExports;
+  const bucketName: string = cfg.aws_user_files_s3_bucket || "";
   const publicPrefix = "public/";
 
   async function handleSend() {
@@ -232,7 +246,7 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
                   }),
                 });
                 if (!parseRes.ok) throw new Error(`Parse API ${parseRes.status}`);
-                parseJson = await parseRes.json();
+                parseJson = (await parseRes.json()) as unknown;
                 lastErr = null;
                 break;
               } catch (e) {
@@ -241,19 +255,19 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
               }
             }
             if (lastErr) throw lastErr;
-            const parsedData = parseJson?.parsedData ?? {};
+            const parsedData = (parseJson as Record<string, unknown> | null | undefined)?.parsedData ?? {};
             const resumeText = typeof parsedData === "string" ? parsedData : JSON.stringify(parsedData);
             await fetch("https://resume-query-api.onrender.com/ingest", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ user_id: userId, resume_text: resumeText }),
             });
-          } catch (apiErr) {
+          } catch (apiErr: unknown) {
             // reflect error status in modal list
             setUploads((prev) => prev.map((u) => (u.name === file.name ? { ...u, status: "error", error: String(apiErr) } : u)));
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         setUploads((prev) => prev.map((u) => (u.name === file.name ? { ...u, status: "error", error: String(err) } : u)));
       }
     }
@@ -292,7 +306,7 @@ function Home({ user, signOut }: WithAuthenticatorProps) {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   alt="You"
-                  src={(user as any)?.attributes?.picture || "/user.png"}
+                  src={((user as AmplifyUserLike)?.attributes?.picture) || "/user.png"}
                   className="w-full h-full object-cover"
                 />
               </div>
